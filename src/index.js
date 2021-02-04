@@ -77,7 +77,7 @@ app.get("/api/users/:id/books", (req, res) => {
 app.get("/api/users/:id/books/mybooks", (req, res) => {
   const id_user = req.params.id;
   connection.query(
-    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE user.id=? AND wishlist=0",
+    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE book.wishlist='false' AND user.id=?",
     [id_user],
     (err, results) => {
       if (err) {
@@ -92,7 +92,7 @@ app.get("/api/users/:id/books/mybooks", (req, res) => {
 app.get("/api/users/:id/books/mywishlist", (req, res) => {
   const id_user = req.params.id;
   connection.query(
-    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE user.id=? AND wishlist=1",
+    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE book.wishlist='true' AND user.id=?",
     [id_user],
     (err, results) => {
       if (err) {
@@ -168,6 +168,7 @@ app.post("/api/login", (req, res) => {
           results[0].password
         );
         const formData = {
+          id: results[0].id,
           name: results[0].name,
           email: results[0].email,
           src: results[0].src,
@@ -179,7 +180,7 @@ app.post("/api/login", (req, res) => {
             if (error) {
               res.sendStatus(401);
             } else {
-              res.json(token);
+              res.json({ token, id: formData.id });
             }
           });
         } else {
