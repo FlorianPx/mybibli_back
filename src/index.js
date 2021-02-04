@@ -1,10 +1,15 @@
 require("dotenv");
 const express = require("express");
 const connection = require("./config");
+const cors = require("cors");
+const verifyToken = require("./usersControllers");
+const bcrypt = require("bcrypt");
+const jwt = require("jsonwebtoken");
 
 const port = 3008;
 const app = express();
 
+app.use(cors());
 app.use(express.json());
 
 app.get("/api/allelements", (req, res) => {
@@ -43,7 +48,6 @@ app.get("/api/users/:id", (req, res) => {
     [req.params.id],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error retrieving data").json({
           error: err.message,
           sql: err.sql,
@@ -62,7 +66,6 @@ app.get("/api/users/:id/books", (req, res) => {
     [id_user],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error retrieving data");
       } else {
         res.status(200).json(results);
@@ -78,7 +81,6 @@ app.get("/api/users/:id/books/mybooks", (req, res) => {
     [id_user],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error retrieving data");
       } else {
         res.status(200).json(results);
@@ -94,7 +96,6 @@ app.get("/api/users/:id/books/mywishlist", (req, res) => {
     [id_user],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error retrieving data");
       } else {
         res.status(200).json(results);
@@ -111,7 +112,6 @@ app.put("/api/users/:id", (req, res) => {
     [new_user, id_user],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error updating user");
       } else {
         res.status(200).send("User updated successfully 🎉");
@@ -121,19 +121,21 @@ app.put("/api/users/:id", (req, res) => {
 });
 
 app.post("/api/users", (req, res) => {
-  const { name, email, password } = req.body;
-  connection.query(
-    "INSERT INTO user (name, email, password ) VALUES (?,?,?)",
-    [name, email, password],
-    (err, results) => {
-      if (err) {
-        console.log(err);
-        res.status(500).send("Error saving user");
-      } else {
-        res.status(200).send("User successfully saved");
-      }
+  const hash = bcrypt.hashSync(req.body.password, 10);
+  const dataUser = {
+    name: req.body.name,
+    email: req.body.email,
+    password: hash,
+    src: req.body.src,
+    image_id: req.body.image_id,
+  };
+  connection.query("INSERT INTO user SET ?", [dataUser], (err, results) => {
+    if (err) {
+      res.status(500).send("Error saving user");
+    } else {
+      res.status(200).send("User successfully saved");
     }
-  );
+  });
 });
 
 app.delete("/api/users/:id", (req, res) => {
@@ -143,13 +145,59 @@ app.delete("/api/users/:id", (req, res) => {
     [id_user],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("😱 Error deleting an user");
       } else {
         res.status(200).send("🎉 User deleted!");
       }
     }
   );
+});
+
+//___________________USER_ACCESS____________________________
+
+app.post("/api/login", (req, res) => {
+  connection.query(
+    "SELECT *  FROM user WHERE email = ?",
+    [req.body.email],
+    (err, results) => {
+      if (err || results.length === 0) {
+        res.status(401).send("Identifiants incorrects");
+      } else {
+        const goodPassword = bcrypt.compareSync(
+          req.body.password,
+          results[0].password
+        );
+        const formData = {
+          name: results[0].name,
+          email: results[0].email,
+          src: results[0].src,
+          image_id: results[0].image_id,
+        };
+
+        if (goodPassword) {
+          jwt.sign({ formData }, process.env.SECRET_KEY, (error, token) => {
+            if (error) {
+              res.sendStatus(401);
+            } else {
+              res.json(token);
+            }
+          });
+        } else {
+          res.status(401).send("Identifiants incorrects");
+        }
+      }
+    }
+  );
+});
+
+app.post("/api/profile", verifyToken, (req, res) => {
+  jwt.verify(req.token, process.env.SECRET_KEY, (err, results) => {
+    if (err) {
+      res.sendStatus(401);
+    } else {
+      res.json({ results });
+    }
+  });
 });
 
 //__________________BOOKS_________________________________
@@ -173,7 +221,6 @@ app.get("/api/books/:id", (req, res) => {
     [req.params.id],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error retrieving data").json({
           error: err.message,
           sql: err.sql,
@@ -193,7 +240,23 @@ app.put("/api/books/:id", (req, res) => {
     [new_book, id_book],
     (err, results) => {
       if (err) {
-        console.log(err);
+        res.status(500).send("Error updating book");
+      } else {
+        res.status(200).send("Book updated successfully 🎉");
+      }
+    }
+  );
+});
+
+app.put("/api/users/:id/books/:id", (req, res) => {
+  const id_user = req.params.id;
+  const id_book = req.params.id;
+  const new_book = req.body;
+  connection.query(
+    "UPDATE book SET ? WHERE book.id = ?",
+    [id_user, id_book, new_book],
+    (err, results) => {
+      if (err) {
         res.status(500).send("Error updating book");
       } else {
         res.status(200).send("Book updated successfully 🎉");
@@ -209,10 +272,25 @@ app.post("/api/books", (req, res) => {
     [title, type, author, favorite, img, wishlist],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("Error saving book");
       } else {
-        res.status(200).send("Book successfully saved");
+        res.status(200).send(results);
+      }
+    }
+  );
+});
+
+app.post("/api/users/:id/books", (req, res) => {
+  const id_user = req.params.id;
+  const { book_id, user_id } = req.body;
+  connection.query(
+    "INSERT INTO user_book (book_id, user_id) VALUES (?,?)",
+    [book_id, user_id, id_user],
+    (err, results) => {
+      if (err) {
+        res.status(500).send("Error saving book");
+      } else {
+        res.status(200).send(results);
       }
     }
   );
@@ -225,7 +303,6 @@ app.delete("/api/books/:id", (req, res) => {
     [id_playlist],
     (err, results) => {
       if (err) {
-        console.log(err);
         res.status(500).send("😱 Error deleting an book");
       } else {
         res.status(200).send("🎉 Book deleted!");
