@@ -192,13 +192,7 @@ app.post("/api/login", (req, res) => {
 });
 
 app.post("/api/profile", verifyToken, (req, res) => {
-  jwt.verify(req.token, process.env.SECRET_KEY, (err, results) => {
-    if (err) {
-      res.sendStatus(401);
-    } else {
-      res.json({ results });
-    }
-  });
+  res.send(req.results);
 });
 
 //__________________BOOKS_________________________________
@@ -297,11 +291,11 @@ app.post("/api/users/:id/books", (req, res) => {
   );
 });
 
-app.delete("/api/books/:id", (req, res) => {
-  const id_playlist = req.params.id;
+app.delete("/api/books/:id", verifyToken, (req, res) => {
+  const book_id = req.params.id;
   connection.query(
     "DELETE FROM book WHERE id = ?",
-    [id_playlist],
+    [book_id],
     (err, results) => {
       if (err) {
         res.status(500).send("😱 Error deleting an book");
