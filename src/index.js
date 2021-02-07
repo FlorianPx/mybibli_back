@@ -30,7 +30,7 @@ app.get("/api/allelements", (req, res) => {
 
 //___________________USERS___________________________________
 app.get("/api/users", (req, res) => {
-  connection.query("SELECT * FROM user", (err, results) => {
+  connection.query("SELECT * FROM user ORDER BY user.name", (err, results) => {
     if (err) {
       res.status(500).json({
         error: err.message,
@@ -62,7 +62,7 @@ app.get("/api/users/:id", (req, res) => {
 app.get("/api/users/:id/books", (req, res) => {
   const id_user = req.params.id;
   connection.query(
-    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE user.id=?",
+    "SELECT book.id, book.title, book.author, book.type, book.img, user_book.favorite, user_book.wishlist, user_book.id AS userBook_id FROM user_book JOIN book ON book.id=user_book.book_id JOIN user ON user.id=user_book.user_id WHERE user.id=? ORDER BY book.title ASC",
     [id_user],
     (err, results) => {
       if (err) {
@@ -77,7 +77,7 @@ app.get("/api/users/:id/books", (req, res) => {
 app.get("/api/users/:id/books/mybooks", (req, res) => {
   const id_user = req.params.id;
   connection.query(
-    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE book.wishlist='false' AND user.id=?",
+    "SELECT book.id, book.title, book.author, book.type, book.img, user_book.favorite, user_book.wishlist, user_book.id AS userBook_id FROM user_book JOIN book ON book.id=user_book.book_id JOIN user ON user.id=user_book.user_id WHERE user_book.wishlist='false' AND user.id=? ORDER BY book.title ASC",
     [id_user],
     (err, results) => {
       if (err) {
@@ -92,7 +92,7 @@ app.get("/api/users/:id/books/mybooks", (req, res) => {
 app.get("/api/users/:id/books/mywishlist", (req, res) => {
   const id_user = req.params.id;
   connection.query(
-    "SELECT * FROM book JOIN user_book ON user_book.book_id=book.id JOIN user ON user.id=user_book.user_id WHERE book.wishlist='true' AND user.id=?",
+    "SELECT book.id, book.title, book.author, book.type, book.img, user_book.favorite, user_book.wishlist, user_book.id AS userBook_id FROM user_book JOIN book ON book.id=user_book.book_id JOIN user ON user.id=user_book.user_id WHERE user_book.wishlist='true' AND user.id=? ORDER BY book.title ASC",
     [id_user],
     (err, results) => {
       if (err) {
@@ -120,6 +120,50 @@ app.put("/api/users/:id", (req, res) => {
   );
 });
 
+app.put("/api/users/:id/books/:id", (req, res) => {
+  const user_id = req.params.id;
+  const book_id = req.params.id;
+  const new_book = req.body;
+  connection.query(
+    "UPDATE book SET book.id, book.title, book.author, book.type, book.img WHERE user_id=? AND book_id=?",
+    [new_book, user_id, book_id],
+    (err, results) => {
+      if (err) {
+        res.status(500).send("Error updating book");
+      } else {
+        res.status(200).send("Book updated successfully 🎉");
+      }
+    }
+  );
+  connection.query(
+    "UPDATE user_book SET user_book.favorite, user_book.wishlist WHERE user_id=? AND book_id=?",
+    [new_book, user_id, book_id],
+    (err, results) => {
+      if (err) {
+        res.status(500).send("Error updating user book");
+      } else {
+        res.status(200).send("User book updated successfully 🎉");
+      }
+    }
+  );
+});
+
+app.put("/api/books/:id/favorite", (req, res) => {
+  const id = req.params.id;
+  const new_book = req.body;
+  connection.query(
+    "UPDATE user_book SET ? WHERE id=?",
+    [new_book, id],
+    (err, results) => {
+      if (err) {
+        res.status(500).send("Error updating book");
+      } else {
+        res.status(200).send("Book updated successfully 🎉");
+      }
+    }
+  );
+});
+
 app.post("/api/users", (req, res) => {
   const hash = bcrypt.hashSync(req.body.password, 10);
   const dataUser = {
@@ -136,6 +180,22 @@ app.post("/api/users", (req, res) => {
       res.status(200).send("User successfully saved");
     }
   });
+});
+
+app.post("/api/users/:id/books/", (req, res) => {
+  const id_user = req.params.id;
+  const { book_id, user_id, favorite, wishlist } = req.body;
+  connection.query(
+    "INSERT INTO user_book (book_id, user_id, favorite, wishlist) VALUES (?,?,?,?)",
+    [book_id, user_id, favorite, wishlist, id_user],
+    (err, results) => {
+      if (err) {
+        res.status(500).send("Error saving book");
+      } else {
+        res.status(200).send(results);
+      }
+    }
+  );
 });
 
 app.delete("/api/users/:id", (req, res) => {
@@ -180,7 +240,12 @@ app.post("/api/login", (req, res) => {
             if (error) {
               res.sendStatus(401);
             } else {
-              res.json({ token, id: formData.id });
+              res.json({
+                token,
+                id: formData.id,
+                name: formData.name,
+                iconId: formData.image_id,
+              });
             }
           });
         } else {
@@ -198,16 +263,19 @@ app.post("/api/profile", verifyToken, (req, res) => {
 //__________________BOOKS_________________________________
 
 app.get("/api/books", (req, res) => {
-  connection.query("SELECT * FROM book", (err, results) => {
-    if (err) {
-      res.status(500).json({
-        error: err.message,
-        sql: err.sql,
-      });
-    } else {
-      res.json(results);
+  connection.query(
+    "SELECT * FROM book ORDER BY book.title ASC",
+    (err, results) => {
+      if (err) {
+        res.status(500).json({
+          error: err.message,
+          sql: err.sql,
+        });
+      } else {
+        res.json(results);
+      }
     }
-  });
+  );
 });
 
 app.get("/api/books/:id", (req, res) => {
@@ -227,44 +295,11 @@ app.get("/api/books/:id", (req, res) => {
   );
 });
 
-app.put("/api/books/:id", (req, res) => {
-  const id_book = req.params.id;
-  const new_book = req.body;
-  connection.query(
-    "UPDATE book SET ? WHERE book.id = ?",
-    [new_book, id_book],
-    (err, results) => {
-      if (err) {
-        res.status(500).send("Error updating book");
-      } else {
-        res.status(200).send("Book updated successfully 🎉");
-      }
-    }
-  );
-});
-
-app.put("/api/users/:id/books/:id", (req, res) => {
-  const id_user = req.params.id;
-  const id_book = req.params.id;
-  const new_book = req.body;
-  connection.query(
-    "UPDATE book SET ? WHERE book.id = ?",
-    [id_user, id_book, new_book],
-    (err, results) => {
-      if (err) {
-        res.status(500).send("Error updating book");
-      } else {
-        res.status(200).send("Book updated successfully 🎉");
-      }
-    }
-  );
-});
-
 app.post("/api/books", (req, res) => {
-  const { title, type, author, favorite, img, wishlist } = req.body;
+  const { title, type, author, img } = req.body;
   connection.query(
-    "INSERT INTO book (title, type, author, favorite, img, wishlist) VALUES (?,?,?,?,?,?)",
-    [title, type, author, favorite, img, wishlist],
+    "INSERT INTO book (title, type, author, img) VALUES (?,?,?,?)",
+    [title, type, author, img],
     (err, results) => {
       if (err) {
         res.status(500).send("Error saving book");
@@ -275,27 +310,22 @@ app.post("/api/books", (req, res) => {
   );
 });
 
-app.post("/api/users/:id/books", (req, res) => {
-  const id_user = req.params.id;
-  const { book_id, user_id } = req.body;
-  connection.query(
-    "INSERT INTO user_book (book_id, user_id) VALUES (?,?)",
-    [book_id, user_id, id_user],
-    (err, results) => {
-      if (err) {
-        res.status(500).send("Error saving book");
-      } else {
-        res.status(200).send(results);
-      }
+app.delete("/api/books", verifyToken, (req, res) => {
+  const book_id = req.params.id;
+  connection.query("DELETE FROM book WHERE id=?", [book_id], (err, results) => {
+    if (err) {
+      res.status(500).send("😱 Error deleting an book");
+    } else {
+      res.status(200).send("🎉 Book deleted!");
     }
-  );
+  });
 });
 
 app.delete("/api/books/:id", verifyToken, (req, res) => {
-  const book_id = req.params.id;
+  const userBook_id = req.params.id;
   connection.query(
-    "DELETE FROM book WHERE id = ?",
-    [book_id],
+    "DELETE FROM user_book WHERE id=?",
+    [userBook_id],
     (err, results) => {
       if (err) {
         res.status(500).send("😱 Error deleting an book");
